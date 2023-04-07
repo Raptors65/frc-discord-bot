@@ -1,8 +1,8 @@
-from aiohttp_client_cache import CachedSession, SQLiteBackend
+from aiohttp_client_cache import SQLiteBackend
+from aiohttp_client_cache.session import CachedSession
 from dotenv import load_dotenv
 import os
-from base64 import b64encode
-from typing import Literal, NotRequired, Optional, TypedDict
+from typing import Any, Optional
 
 from tba_types import Event, EventPredictions, MatchSimple, ModelType
 
@@ -18,10 +18,10 @@ BASE_URL = "https://www.thebluealliance.com/api/v3"
 
 etags = {}
 
-session: CachedSession = None
+session: Optional[CachedSession] = None
 
 
-async def get_json(path: str):
+async def get_json(path: str) -> Any:
     global session
 
     if session is None:
@@ -34,10 +34,31 @@ async def get_json(path: str):
     else:
         headers = HEADERS
 
+    # Necessary to manually get cached response because if it expired,
+    # then it will be deleted during the request.
+    cache_key = session.cache.create_key("GET", full_url)
+    cached_response = await session.cache.responses.read(cache_key)
+
+    # Send request
     async with session.get(full_url, headers=headers) as response:
-        if response.status < 400:
+        if response.status == 200:
+            # This means either the response was cached or there was
+            # new data.
             etags[full_url] = response.headers["ETag"]
             return await response.json()
+        elif response.status == 304:
+            # This means the cache expired but the server said the data
+            # was not changed.
+            if cached_response is not None:
+                # Re-cache original cached data
+                await session.cache.responses.write(cache_key, cached_response)
+                # Return cached data
+                cached_data = await cached_response.json()  # type: ignore
+                return cached_data
+
+            if cached_response is None:
+                # this shouldn't happen but just in case...
+                etags.pop(full_url)
         else:
             raise ConnectionError(
                 f"Error accessing the TBA API; status code {response.status}.")
@@ -55,7 +76,7 @@ async def event_predictions(event_key: str) -> EventPredictions:
     return await get_json(f"/event/{event_key}/predictions")
 
 
-async def team_matches_year_simple(team_key: int, year: int) -> list[MatchSimple]:
+async def team_matches_year_simple(team_key: str, year: int) -> list[MatchSimple]:
     return await get_json(f"/team/{team_key}/matches/{year}/simple")
 
 

@@ -87,6 +87,8 @@ def format_matches(matches: list[MatchSimple], team_number: int, title: str,
                 match_name = f"Lower Finals"
             elif match["set_number"] == 14:
                 match_name = f"Finals"
+            else:
+                match_name = f"Playoff Match"
 
             match_name += f" ({match['set_number']})"
 
@@ -101,8 +103,8 @@ def format_matches(matches: list[MatchSimple], team_number: int, title: str,
     return embed
 
 
-def get_current_event(team_number: int):
-    events = tba.team_events_year(f"frc{team_number}", 2023)
+async def get_current_event(team_number: int):
+    events = await tba.team_events_year(f"frc{team_number}", 2023)
     for event in events:
         current_date = datetime.now()
         start_date = datetime.strptime(event["start_date"], "%Y-%m-%d")

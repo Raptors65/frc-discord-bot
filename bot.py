@@ -4,28 +4,30 @@ from discord import app_commands
 import os
 from datetime import datetime
 import time
-from discord.ext import commands
 import helpers
 
 from dotenv import load_dotenv
 load_dotenv()
 
+GUILD_ID = os.getenv("GUILD_ID")
+if GUILD_ID is None:
+    raise NameError("GUILD_ID not found in .env file")
+MY_GUILD = discord.Object(GUILD_ID)
 
-class FRCClient(commands.Bot):
+
+class FRCClient(discord.Client):
     def __init__(self, team_number, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.team_number = team_number
+        self.tree = app_commands.CommandTree(self)
+
+    async def setup_hook(self):
+        self.tree.copy_global_to(guild=MY_GUILD)
+        await self.tree.sync(guild=MY_GUILD)
 
     async def on_ready(self):
         print(f"We have logged in as {self.user}")
-
-    async def on_message(self, message: discord.Message):
-        if message.author != self.user:
-            async with message.channel.typing():
-                await super().on_message(message)
-        else:
-            await super().on_message(message)
 
     async def close(self):
         print("Closing")
@@ -40,13 +42,12 @@ intents.messages = True
 intents.message_content = True
 
 
-bot = FRCClient(8574,
-                command_prefix="+",
-                intents=intents)
+client = FRCClient(8574, intents=intents)
 
 
-@bot.command()
-async def events(ctx: commands.Context, team_number: int = bot.team_number):
+@client.tree.command()
+@app_commands.describe(team_number="The team number")
+async def events(interaction: discord.Interaction, team_number: int = client.team_number):
     team_events_data = await tba.team_events_year(
         f"frc{team_number}", datetime.now().year)
     team_events = [f"""**{event["name"]} ({event["key"]})**
@@ -56,23 +57,25 @@ async def events(ctx: commands.Context, team_number: int = bot.team_number):
     description = "\n\n".join(team_events)
 
     embed = discord.Embed(title="Events", description=description)
-    await ctx.send(embed=embed)
+    await interaction.response.send_message(embed=embed)
 
 
-@bot.command()
-async def predictions(ctx: commands.Context, event_key: str):
+@client.tree.command()
+@app_commands.describe(event_key="The key of the event")
+async def predictions(interaction: discord.Interaction, event_key: str):
     event_predictions_data = await tba.event_predictions(event_key)
     if event_predictions_data["ranking_predictions"] is None:
-        await ctx.send("Predictions not available.")
+        await interaction.response.send_message("Predictions not available.")
         return
 
     description = "\n".join(
         f"{team[1][0]}. {team[0][3:]}" for team in event_predictions_data["ranking_predictions"])
-    await ctx.send(embed=discord.Embed(title="Predictions", description=description))
+    await interaction.response.send_message(embed=discord.Embed(title="Predictions", description=description))
 
 
-@bot.command()
-async def schedule(ctx: commands.Context, team_number: int = bot.team_number):
+@client.tree.command()
+@app_commands.describe(team_number="The team number")
+async def schedule(interaction: discord.Interaction, team_number: int = client.team_number):
     matches = await tba.team_matches_year_simple(
         f"frc{team_number}", datetime.now().year)
     next_matches = sorted(filter(lambda match: match["predicted_time"] is not None
@@ -81,8 +84,8 @@ async def schedule(ctx: commands.Context, team_number: int = bot.team_number):
                           key=lambda event: event["match_number"])[:10]
 
     if len(next_matches) == 0:
-        await ctx.send(embed=discord.Embed(title="Upcoming Matches",
-                                           description="No scheduled matches."))
+        await interaction.response.send_message(embed=discord.Embed(title="Upcoming Matches",
+                                                                    description="No scheduled matches."))
         return
 
     current_event_key = next_matches[0]["event_key"]
@@ -96,21 +99,26 @@ async def schedule(ctx: commands.Context, team_number: int = bot.team_number):
         embed = helpers.format_matches(
             next_matches, team_number, "Upcoming Matches")
 
-    await ctx.send(embed=embed)
+    await interaction.response.send_message(embed=embed)
 
 
-@bot.command()
-async def history(ctx: commands.Context, team_number: int = bot.team_number):
+@client.tree.command()
+@app_commands.describe(team_number="The team number")
+async def history(interaction: discord.Interaction, team_number: int = client.team_number):
 
     matches = await tba.team_matches_year_simple(
         f"frc{team_number}", datetime.now().year)
     previous_matches = sorted(filter(lambda match: match["predicted_time"] is not None
                                      and match["predicted_time"] < time.time(),
                                      matches),
-                              key=lambda match: match["predicted_time"])[-10:]
+                              key=lambda match: match["predicted_time"])[-10:]  # type: ignore
 
     embed = helpers.format_matches(
         previous_matches, team_number, "Past Matches")
-    await ctx.send(embed=embed)
+    await interaction.response.send_message(embed=embed)
 
-bot.run(os.getenv("DISCORD_TOKEN"))
+DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
+if DISCORD_TOKEN is None:
+    raise NameError("DISCORD_TOKEN not found in .env file")
+
+client.run(DISCORD_TOKEN)
