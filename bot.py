@@ -1,3 +1,6 @@
+from math import ceil
+from command_tree import TBACommandTree
+from page import Page
 import tba
 import discord
 from discord import app_commands
@@ -13,6 +16,7 @@ GUILD_ID = os.getenv("GUILD_ID")
 if GUILD_ID is None:
     raise NameError("GUILD_ID not found in .env file")
 MY_GUILD = discord.Object(GUILD_ID)
+MAX_MATCHES_PER_PAGE = 8
 
 
 class FRCClient(discord.Client):
@@ -20,7 +24,7 @@ class FRCClient(discord.Client):
         super().__init__(*args, **kwargs)
 
         self.team_number = team_number
-        self.tree = app_commands.CommandTree(self)
+        self.tree = TBACommandTree(self)
 
     async def setup_hook(self):
         self.tree.copy_global_to(guild=MY_GUILD)
@@ -56,21 +60,25 @@ async def events(interaction: discord.Interaction, team_number: int = client.tea
                    for event in team_events_data]
     description = "\n\n".join(team_events)
 
-    embed = discord.Embed(title="Events", description=description)
+    embed = discord.Embed(title=f"Events - {team_number}", description=description)
     await interaction.response.send_message(embed=embed)
 
 
 @client.tree.command()
-@app_commands.describe(event_key="The key of the event")
+@app_commands.describe(event_key="The event key")
 async def predictions(interaction: discord.Interaction, event_key: str):
     event_predictions_data = await tba.event_predictions(event_key)
     if event_predictions_data["ranking_predictions"] is None:
         await interaction.response.send_message("Predictions not available.")
         return
 
-    description = "\n".join(
-        f"{team[1][0]}. {team[0][3:]}" for team in event_predictions_data["ranking_predictions"])
-    await interaction.response.send_message(embed=discord.Embed(title="Predictions", description=description))
+    rankings = sorted(event_predictions_data["ranking_predictions"],
+                      key=lambda prediction: prediction[1][4], reverse=True)
+
+    embed = discord.Embed(title=f"Predictions - {event_key}")
+    for rank, team in enumerate(rankings, start=1):
+        embed.add_field(name=f"{rank}. {team[0][3:]}", value=f"{round(team[1][4])} RP")
+    await interaction.response.send_message(embed=embed)
 
 
 @client.tree.command()
@@ -81,7 +89,7 @@ async def schedule(interaction: discord.Interaction, team_number: int = client.t
     next_matches = sorted(filter(lambda match: match["predicted_time"] is not None
                                  and time.time() < match["predicted_time"],
                                  matches),
-                          key=lambda event: event["match_number"])[:10]
+                          key=lambda event: event["predicted_time"])  # type: ignore
 
     if len(next_matches) == 0:
         await interaction.response.send_message(embed=discord.Embed(title="Upcoming Matches",
@@ -92,14 +100,23 @@ async def schedule(interaction: discord.Interaction, team_number: int = client.t
 
     predictions = await tba.event_predictions(current_event_key)
 
-    if (match_predictions := predictions["match_predictions"]) is not None:
-        embed = helpers.format_matches(
-            next_matches, team_number, "Upcoming Matches", match_predictions)
-    else:
-        embed = helpers.format_matches(
-            next_matches, team_number, "Upcoming Matches")
+    num_pages = ceil(len(next_matches) / MAX_MATCHES_PER_PAGE)
 
-    await interaction.response.send_message(embed=embed)
+    def formatter(page: int):
+        page_matches = next_matches[page*MAX_MATCHES_PER_PAGE:(page+1)*MAX_MATCHES_PER_PAGE]
+        if (match_predictions := predictions["match_predictions"]) is not None:
+            embed = helpers.format_matches(
+                page_matches, team_number, f"Upcoming Matches - {team_number} - Page {page + 1}/{num_pages}", match_predictions)
+        else:
+            embed = helpers.format_matches(
+                page_matches, team_number, f"Upcoming Matches - {team_number} - Page {page + 1}/{num_pages}")
+        return embed
+
+    if num_pages > 1:
+        view = Page(0, num_pages, formatter)
+        await interaction.response.send_message(embed=formatter(0), view=view)
+    else:
+        await interaction.response.send_message(embed=formatter(0))
 
 
 @client.tree.command()
@@ -111,11 +128,22 @@ async def history(interaction: discord.Interaction, team_number: int = client.te
     previous_matches = sorted(filter(lambda match: match["predicted_time"] is not None
                                      and match["predicted_time"] < time.time(),
                                      matches),
-                              key=lambda match: match["predicted_time"])[-10:]  # type: ignore
+                              key=lambda match: match["predicted_time"],  # type: ignore
+                              reverse=True)
 
-    embed = helpers.format_matches(
-        previous_matches, team_number, "Past Matches")
-    await interaction.response.send_message(embed=embed)
+    num_pages = ceil(len(previous_matches) / MAX_MATCHES_PER_PAGE)
+
+    def formatter(page: int):
+        page_matches = previous_matches[page*MAX_MATCHES_PER_PAGE:(page+1)*MAX_MATCHES_PER_PAGE]
+        embed = helpers.format_matches(
+            page_matches, team_number, f"Previous Matches - {team_number} - Page {page + 1}/{num_pages}")
+        return embed
+
+    if num_pages > 1:
+        view = Page(0, num_pages, formatter)
+        await interaction.response.send_message(embed=formatter(0), view=view)
+    else:
+        await interaction.response.send_message(embed=formatter(0))
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 if DISCORD_TOKEN is None:

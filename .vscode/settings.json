@@ -1,4 +1,10 @@
 {
   "editor.defaultFormatter": "ms-python.python",
-  "python.analysis.typeCheckingMode": "basic"
+  "python.formatting.autopep8Args": [
+    "--max-line-length=99"
+  ],
+  "python.analysis.typeCheckingMode": "basic",
+  "editor.detectIndentation": false,
+  "editor.insertSpaces": true,
+  "editor.indentSize": 4
 }

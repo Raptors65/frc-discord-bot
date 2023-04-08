@@ -59,6 +59,8 @@ async def get_json(path: str) -> Any:
             if cached_response is None:
                 # this shouldn't happen but just in case...
                 etags.pop(full_url)
+        elif response.status == 404:
+            raise FileNotFoundError("404 Not Found; check your parameters?")
         else:
             raise ConnectionError(
                 f"Error accessing the TBA API; status code {response.status}.")
