@@ -49,7 +49,7 @@ intents.message_content = True
 client = FRCClient(8574, intents=intents)
 
 
-@client.tree.command()
+@client.tree.command(description="Gets the events played by a specific team this year.")
 @app_commands.describe(team_number="The team number")
 async def events(interaction: discord.Interaction, team_number: int = client.team_number):
     team_events_data = await tba.team_events_year(
@@ -64,7 +64,7 @@ async def events(interaction: discord.Interaction, team_number: int = client.tea
     await interaction.response.send_message(embed=embed)
 
 
-@client.tree.command()
+@client.tree.command(description="Gets the predicted final rankings for a specific event.")
 @app_commands.describe(event_key="The event key")
 async def predictions(interaction: discord.Interaction, event_key: str):
     event_predictions_data = await tba.event_predictions(event_key)
@@ -81,7 +81,7 @@ async def predictions(interaction: discord.Interaction, event_key: str):
     await interaction.response.send_message(embed=embed)
 
 
-@client.tree.command()
+@client.tree.command(description="Gets the upcoming matches of a specific team.")
 @app_commands.describe(team_number="The team number")
 async def schedule(interaction: discord.Interaction, team_number: int = client.team_number):
     matches = await tba.team_matches_year_simple(
@@ -119,7 +119,7 @@ async def schedule(interaction: discord.Interaction, team_number: int = client.t
         await interaction.response.send_message(embed=formatter(0))
 
 
-@client.tree.command()
+@client.tree.command(description="Gets the past matches of a specific team.")
 @app_commands.describe(team_number="The team number")
 async def history(interaction: discord.Interaction, team_number: int = client.team_number):
 
