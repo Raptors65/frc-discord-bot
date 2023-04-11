@@ -7,7 +7,7 @@ from tba_types import MatchPredictions, MatchSimple
 import tba
 
 
-def format_matches(matches: list[MatchSimple], team_number: int, title: str,
+def format_matches(matches: list[MatchSimple], title: str, team_number: int = 0,
                    predictions: Optional[MatchPredictions] = None) -> discord.Embed:
     embed = discord.Embed(title=title)
     last_event_key = ""
@@ -100,6 +100,29 @@ def format_matches(matches: list[MatchSimple], team_number: int, title: str,
         embed.add_field(name=f"{match_name} | {time_text}",
                         value=alliances_text, inline=False)
 
+    return embed
+
+
+def format_playoff_round(matches: list[MatchSimple], title: str) -> discord.Embed:
+    match_descriptions = []
+    for match in matches:
+        if match["alliances"] is not None:
+            match_description = "__"
+            red_alliance = "-".join(key[3:] for key in match["alliances"]["red"]["team_keys"])
+            red_alliance_space = 15 - len(red_alliance)
+            blue_alliance = "-".join(key[3:] for key in match["alliances"]["blue"]["team_keys"])
+            blue_alliance_space = 15 - len(blue_alliance)
+
+            match_description += "`" + (" " * red_alliance_space) + red_alliance + "`"
+            match_description += "\\_" * 3
+            match_description += "__\n__"
+            match_description += "`" + (" " * blue_alliance_space) + blue_alliance + "`"
+            match_description += "\\_" * 3
+            match_description += "__" + ("\N{Overline}" * 5)
+
+            match_descriptions.append(match_description)
+
+    embed = discord.Embed(title=title, description="\n\n".join(match_descriptions))
     return embed
 
 

@@ -21,14 +21,17 @@ etags = {}
 session: Optional[CachedSession] = None
 
 
-async def get_json(path: str) -> Any:
+async def get_json(path: str, model_type: Optional[ModelType] = None) -> Any:
     global session
 
+    # Create session if not already created
     if session is None:
         session = CachedSession(cache=SQLiteBackend(cache_name='api_cache',
                                                     cache_control=True))
 
+    # Get full URL and headers
     full_url = BASE_URL + path
+
     if full_url in etags:
         headers = {**HEADERS, "If-None-Match": etags[full_url]}
     else:
@@ -66,6 +69,10 @@ async def get_json(path: str) -> Any:
                 f"Error accessing the TBA API; status code {response.status}.")
 
 
+async def event_matches_simple(event_key: str) -> list[MatchSimple]:
+    return await get_json(f"/event/{event_key}/matches/simple")
+
+
 async def team_events_statuses(team_key: str, year: int) -> dict:
     return await get_json(f"/team/{team_key}/events/{year}/statuses")
 
@@ -82,10 +89,5 @@ async def team_matches_year_simple(team_key: str, year: int) -> list[MatchSimple
     return await get_json(f"/team/{team_key}/matches/{year}/simple")
 
 
-async def team_event_matches(team_key: str, event_key: str, model_type: Optional[ModelType] = None):
-    if model_type is None:
-        return await get_json(f"/team/{team_key}/event/{event_key}/matches")
-    elif model_type in ["simple", "keys"]:
-        return await get_json(f"/team/{team_key}/event/{event_key}/matches/{model_type}")
-    else:
-        raise ValueError("Invalid model_type; must be 'simple' or 'keys'.")
+async def team_event_matches(team_key: str, event_key: str):
+    return await get_json(f"/team/{team_key}/event/{event_key}/matches")
